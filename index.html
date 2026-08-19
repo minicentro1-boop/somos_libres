@@ -75,7 +75,6 @@
             margin: 15px 0;
         }
 
-        /* El círculo de fondo gris */
         .progress-ring-bg {
             position: absolute;
             top: 0;
@@ -87,32 +86,31 @@
             box-sizing: border-box;
         }
 
-        /* El círculo de progreso activo (SVG) */
         .progress-ring-svg {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            transform: rotate(-90deg); /* Empezar arriba */
+            transform: rotate(-90deg);
         }
 
         .progress-ring-circle {
             width: 100%;
             height: 100%;
             fill: none;
-            stroke: #ff4757; /* Color por defecto (midiendo/malo) */
+            stroke: #ff4757;
             stroke-width: 8;
             stroke-linecap: round;
             stroke-dasharray: 603; 
-            stroke-dashoffset: 603; /* Empezar vacío */
+            stroke-dashoffset: 603;
             transition: stroke-dashoffset 0.5s linear, stroke 0.3s ease;
         }
 
         #bpm-display {
             font-size: 3.8rem;
             font-weight: bold;
-            color: #ffffff; /* Color neutro dentro del anillo */
+            color: #ffffff;
             margin: 0;
             line-height: 1;
             z-index: 10;
@@ -163,7 +161,7 @@
     <div id="container">
         <h1>Ritmo Cardíaco</h1>
         
-        <!-- Zona de medición con el Anillo Circular -->
+        <!-- Zona de medición -->
         <div id="measurement-zone">
             <div class="progress-ring-bg"></div>
             <svg class="progress-ring-svg" viewBox="0 0 200 200">
@@ -200,7 +198,6 @@
         const resultCard = document.getElementById('resultCard');
         const resultText = document.getElementById('resultText');
 
-        // Constantes del anillo
         const CIRCUMFERENCE = 603; 
 
         let audioCtx = null;
@@ -211,13 +208,11 @@
         let collectedBpm = [];
         const historySize = 30;
         
-        // Ajuste a 25 segundos y tiempo de estabilización
         const DURATION_SECONDS = 25;
         const WARMUP_SECONDS = 4;
         let measurementStartTime = 0;
         let animationFrameId = null;
 
-        // Sonido de latido individual
         function playBeep() {
             if (!audioCtx) return;
             try {
@@ -241,7 +236,6 @@
             } catch(e) {}
         }
 
-        // Alarma sonora de finalización
         function playFinishAlarm() {
             if (!audioCtx) return;
             try {
@@ -250,10 +244,10 @@
                 const gain = audioCtx.createGain();
                 
                 osc.type = 'triangle';
-                osc.frequency.setValueAtTime(523.25, now);       // Do (C5)
-                osc.frequency.setValueAtTime(659.25, now + 0.15); // Mi (E5)
-                osc.frequency.setValueAtTime(783.99, now + 0.30); // Sol (G5)
-                osc.frequency.setValueAtTime(1046.50, now + 0.45); // Do (C6)
+                osc.frequency.setValueAtTime(523.25, now);
+                osc.frequency.setValueAtTime(659.25, now + 0.15);
+                osc.frequency.setValueAtTime(783.99, now + 0.30);
+                osc.frequency.setValueAtTime(1046.50, now + 0.45);
 
                 gain.gain.setValueAtTime(0.5, now);
                 gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
@@ -285,7 +279,6 @@
             const percent = (elapsed / DURATION_SECONDS) * 100;
             setProgress(percent);
 
-            // Mensajes adaptativos en la interfaz según la fase de tiempo
             if (elapsed < WARMUP_SECONDS) {
                 statusText.innerText = `Acomode el dedo suavemente sobre la cámara... (${Math.ceil(WARMUP_SECONDS - elapsed)}s)`;
             } else {
@@ -375,7 +368,7 @@
             playFinishAlarm();
             setProgress(100);
 
-            if (collectedBpm.length > 5) {
+            if (collectedBpm.length > 3) {
                 const sum = collectedBpm.reduce((a, b) => a + b, 0);
                 const avgBpm = Math.round(sum / collectedBpm.length);
                 
@@ -398,21 +391,21 @@
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             const frameData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
 
-            // Uso del CANAL VERDE (frameData[i + 1]) para óptima respuesta fotopletismográfica
-            let totalGreen = 0;
+            // CANAL ROJO RESTAURADO (frameData[i])
+            let totalRed = 0;
             for (let i = 0; i < frameData.length; i += 4) {
-                totalGreen += frameData[i + 1];
+                totalRed += frameData[i];
             }
-            const avgGreen = totalGreen / (frameData.length / 4);
+            const avgRed = totalRed / (frameData.length / 4);
 
-            frameHistory.push(avgGreen);
+            frameHistory.push(avgRed);
             if (frameHistory.length > historySize) frameHistory.shift();
 
             const historyAvg = frameHistory.reduce((a, b) => a + b, 0) / frameHistory.length;
             const now = performance.now();
 
-            // Detección adaptativa de picos con el canal verde
-            if (avgGreen > historyAvg * 1.008 && (now - lastBeatTime) > 428) {
+            // Detección de picos sobre el canal rojo
+            if (avgRed > historyAvg + 1.1 && (now - lastBeatTime) > 428) {
                 playBeep();
                 
                 if (lastBeatTime > 0) {
@@ -420,7 +413,6 @@
                     const bpm = Math.round(60 / timeDiff);
                     
                     if (bpm >= 45 && bpm <= 160) {
-                        // Solo guardamos para la media final si ya pasaron los 4s de acomodación
                         if (elapsedSeconds > WARMUP_SECONDS) {
                             collectedBpm.push(bpm);
                         }
