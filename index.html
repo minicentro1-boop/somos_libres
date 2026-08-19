@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor de Ritmo Cardíaco PRO</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+        }
+        #container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 400px;
+        }
+        canvas {
+            display: none;
+        }
+        .btn {
+            background-color: #ff4757;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(255, 71, 87, 0.4);
+            transition: background 0.3s;
+            margin-top: 15px;
+            z-index: 10;
+        }
+        .btn:disabled {
+            background-color: #555;
+            box-shadow: none;
+            cursor: not-allowed;
+        }
+        #bpm-display {
+            font-size: 3.5rem;
+            font-weight: bold;
+            color: #ff4757;
+            margin: 10px 0 5px 0;
+        }
+        #status-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 15px 0;
+            min-height: 40px;
+        }
+        #status {
+            font-size: 0.95rem;
+            color: #ccc;
+            text-align: center;
+        }
+        /* CAMBIO: Estilo para el temporizador numérico */
+        #timer-number {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #ff4757;
+            background-color: rgba(255, 71, 87, 0.1);
+            padding: 5px 10px;
+            border-radius: 15px;
+            display: none; /* Oculto por defecto */
+        }
+        .heart-icon {
+            font-size: 2.5rem;
+            opacity: 0.3;
+            transition: transform 0.1s, opacity 0.1s;
+        }
+        .heart-active {
+            opacity: 1;
+            transform: scale(1.3);
+        }
+        #progress-container {
+            width: 80%;
+            background-color: #333;
+            border-radius: 10px;
+            height: 12px; /* Un poco más gruesa */
+            overflow: hidden;
+            margin: 15px 0;
+            display: none;
+            border: 1px solid #444;
+        }
+        #progress-bar {
+            width: 0%;
+            height: 100%;
+            background-color: #ff4757;
+            /* CAMBIO: Eliminamos la transición JS y usaremos una animación CSS definida abajo */
+        }
+
+        /* CAMBIO: Definición de la animación CSS nativa */
+        @keyframes progressAnimation {
+            from { width: 0%; }
+            to { width: 100%; }
+        }
+
+        /* Clase que aplicaremos con JS para iniciar la animación */
+        .run-animation {
+            animation-name: progressAnimation;
+            animation-timing-function: linear;
+            animation-fill-mode: forwards;
+            /* La duración se establecerá dinámicamente con JS */
+        }
+
+        .result-card {
+            background-color: #1e1e1e;
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid #333;
+            text-align: center;
+            width: 90%;
+            display: none;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="container">
+        <h1>Ritmo Cardíaco</h1>
+        
+        <div id="heart" class="heart-icon">❤️</div>
+        <div id="bpm-display">-- <span style="font-size:1.2rem">BPM</span></div>
+        
+        <div id="progress-container">
+            <div id="progress-bar"></div>
+        </div>
+
+        <div id="resultCard" class="result-card">
+            <h3 style="margin:0 0 5px 0; color:#2ed573;">Medición Finalizada</h3>
+            <p id="resultText" style="margin:0; font-size:0.9rem; color:#aaa;"></p>
+        </div>
+
+        <!-- CAMBIO: Contenedor para el estado y el número del temporizador -->
+        <div id="status-container">
+            <p id="status">Presione Iniciar y cubra la cámara y el flash con su dedo suavemente.</p>
+            <div id="timer-number">15s</div>
+        </div>
+
+        <button id="startBtn" class="btn">Iniciar Medición</button>
+
+        <video id="webcam" playsinline style="display:none;"></video>
+        <canvas id="canvas" width="50" height="50"></canvas>
+    </div>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const startBtn = document.getElementById('startBtn');
+        const bpmDisplay = document.getElementById('bpm-display');
+        const statusText = document.getElementById('status');
+        const timerNumber = document.getElementById('timer-number'); // CAMBIO
+        const heartIcon = document.getElementById('heart');
+        const progressBar = document.getElementById('progress-bar');
+        const progressContainer = document.getElementById('progress-container');
+        const resultCard = document.getElementById('resultCard');
+        const resultText = document.getElementById('resultText');
+
+        let audioCtx = null;
+        let mediaStream = null;
+        let isProcessing = false;
+        let lastBeatTime = 0;
+        let frameHistory = [];
+        let collectedBpm = [];
+        const historySize = 30;
+        
+        const DURATION_SECONDS = 15; // Tiempo de medición
+        let timerInterval = null;
+        let remainingSeconds = DURATION_SECONDS;
+
+        function playBeep() {
+            if (!audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.08);
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.08);
+                heartIcon.classList.add('heart-active');
+                setTimeout(() => heartIcon.classList.remove('heart-active'), 100);
+            } catch(e) {}
+        }
+
+        function playFinishAlarm() {
+            if (!audioCtx) return;
+            try {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(523.25, now);
+                osc.frequency.setValueAtTime(659.25, now + 0.15);
+                osc.frequency.setValueAtTime(783.99, now + 0.30);
+                osc.frequency.setValueAtTime(1046.50, now + 0.45);
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.8);
+            } catch(e) {}
+        }
+
+        async function startCamera() {
+            try {
+                if (timerInterval) clearInterval(timerInterval);
+                
+                // Reiniciar estados visuales
+                resultCard.style.display = 'none';
+                collectedBpm = [];
+                frameHistory = [];
+                remainingSeconds = DURATION_SECONDS;
+                
+                // CAMBIO: Configurar y mostrar la animación de la barra
+                progressBar.classList.remove('run-animation'); // Quitar si ya existía
+                progressBar.style.animationDuration = `${DURATION_SECONDS}s`; // Definir duración JS
+                
+                // Forzar un reflow para que el navegador note el cambio de clase
+                void progressBar.offsetWidth; 
+
+                progressBar.classList.add('run-animation'); // Iniciar animación CSS
+                progressContainer.style.display = 'block'; // Mostrar contenedor
+                timerNumber.style.display = 'block'; // Mostrar número
+
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: { exact: 'environment' },
+                        width: { ideal: 300 },
+                        height: { ideal: 300 },
+                        advanced: [{ torch: true }]
+                    }
+                });
+
+                video.srcObject = mediaStream;
+                await video.play();
+
+                const track = mediaStream.getVideoTracks()[0];
+                if (track.getCapabilities && track.getCapabilities().torch) {
+                    await track.applyConstraints({ advanced: [{ torch: true }] });
+                }
+
+                isProcessing = true;
+                startBtn.disabled = true;
+                startBtn.innerText = "Midiendo...";
+
+                // Bucle del temporizador JS (solo para la lógica y el número, no para la barra)
+                updateTimerUI();
+                timerInterval = setInterval(() => {
+                    remainingSeconds--;
+                    updateTimerUI();
+
+                    if (remainingSeconds <= 0) {
+                        stopMeasurement();
+                    }
+                }, 1000);
+
+                requestAnimationFrame(processFrame);
+
+            } catch (err) {
+                console.error(err);
+                alert("Error al iniciar: " + err.message);
+                statusText.innerText = "Error de acceso a cámara. Use HTTPS y acepte permisos.";
+                // Ocultar elementos si falla
+                progressContainer.style.display = 'none';
+                timerNumber.style.display = 'none';
+            }
+        }
+
+        function updateTimerUI() {
+            statusText.innerText = `Midiendo... Mantenga el dedo firme.`;
+            timerNumber.innerText = `${remainingSeconds}s`; // CAMBIO: Actualizar número
+        }
+
+        function stopMeasurement() {
+            isProcessing = false;
+            if (timerInterval) clearInterval(timerInterval);
+
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
+
+            // Ocultar elementos de medición
+            progressContainer.style.display = 'none';
+            timerNumber.style.display = 'none'; // CAMBIO
+            progressBar.classList.remove('run-animation'); // CAMBIO
+
+            startBtn.disabled = false;
+            startBtn.innerText = "Medir de Nuevo";
+
+            playFinishAlarm();
+
+            if (collectedBpm.length > 2) {
+                const sum = collectedBpm.reduce((a, b) => a + b, 0);
+                const avgBpm = Math.round(sum / collectedBpm.length);
+                
+                bpmDisplay.innerHTML = `${avgBpm} <span style="font-size:1.2rem">BPM</span>`;
+                statusText.innerText = "¡Medición completada!";
+                resultText.innerText = `Resultado final promedio: ${avgBpm} BPM (basado en ${collectedBpm.length} lecturas estables).`;
+                resultCard.style.display = 'block';
+            } else {
+                statusText.innerText = "No se obtuvo una lectura clara. Intente apoyando suavemente la yema.";
+            }
+        }
+
+        function processFrame() {
+            if (!isProcessing) return;
+
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const frameData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+
+            let totalRed = 0;
+            for (let i = 0; i < frameData.length; i += 4) {
+                totalRed += frameData[i];
+            }
+            const avgRed = totalRed / (frameData.length / 4);
+
+            frameHistory.push(avgRed);
+            if (frameHistory.length > historySize) frameHistory.shift();
+
+            const historyAvg = frameHistory.reduce((a, b) => a + b, 0) / frameHistory.length;
+            const now = performance.now();
+
+            if (avgRed > historyAvg + 1.2 && (now - lastBeatTime) > 400) {
+                playBeep();
+                
+                if (lastBeatTime > 0) {
+                    const timeDiff = (now - lastBeatTime) / 1000;
+                    const bpm = Math.round(60 / timeDiff);
+                    if (bpm >= 45 && bpm <= 180) {
+                        collectedBpm.push(bpm);
+                        bpmDisplay.innerHTML = `${bpm} <span style="font-size:1.2rem">BPM</span>`;
+                    }
+                }
+                lastBeatTime = now;
+            }
+
+            requestAnimationFrame(processFrame);
+        }
+
+        startBtn.addEventListener('click', startCamera);
+    </script>
+</body>
+</html>
