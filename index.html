@@ -486,7 +486,7 @@
       </div>
     </div>
 
-    <!-- Pestaña Manual Tap con Medidor Circular (Activa por defecto) -->
+    <!-- Pestaña Manual Tap (Visual por defecto como en Foto 2) -->
     <div id="tabManual" class="tab-content active">
       <div class="heart-circle-container">
         <div class="heart-circle" id="tapCircle" onclick="registrarLatidoManual()">
@@ -678,7 +678,7 @@
     document.getElementById('tabManual').classList.toggle('active', modo === 'manual');
   }
 
-  // --- MEDICIÓN ÓPTICA POR CÁMARA MEJORADA ---
+  // --- MEDICIÓN ÓPTICA POR CÁMARA CON AUDIO EN TIEMPO REAL ---
   async function iniciarCamaraOptica() {
     getAudioContext();
     const status = document.getElementById('camStatus');
@@ -755,7 +755,6 @@
         let vPrev1 = roisHist[n - 2].val;
         let vPrev2 = roisHist[n - 3].val;
 
-        // Detección de cresta y ventana mínima entre latidos (350ms)
         if (vPrev1 > vPrev2 && vPrev1 > vActual && (ahora - ultimoLatidoOpticoTime > 350)) {
           reproducirTono(600, 0.05); // Pitido de pulso detectado
           ultimoLatidoOpticoTime = ahora;
