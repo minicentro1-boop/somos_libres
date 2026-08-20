@@ -143,6 +143,7 @@
             line-height: 1.4;
         }
 
+        /* --- Tarjeta de Resultados Avanzada --- */
         .result-card {
             background-color: #1a1a1a;
             padding: 20px;
@@ -153,6 +154,44 @@
             display: none;
             margin-top: 10px;
             box-sizing: border-box;
+        }
+
+        .metrics-grid {
+            display: flex;
+            justify-content: space-between;
+            background: #121212;
+            padding: 12px 5px;
+            border-radius: 12px;
+            border: 1px solid #2a2a2a;
+            margin-top: 15px;
+        }
+
+        .metric-col {
+            flex: 1;
+            text-align: center;
+            padding: 0 4px;
+        }
+
+        .metric-col:not(:last-child) {
+            border-right: 1px solid #2a2a2a;
+        }
+
+        .metric-title {
+            font-size: 0.7rem;
+            color: #888;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .metric-value {
+            font-size: 1rem;
+            font-weight: bold;
+        }
+
+        .metric-sub {
+            font-size: 0.68rem;
+            color: #aaa;
+            margin-top: 2px;
         }
     </style>
 </head>
@@ -176,10 +215,39 @@
 
         <button id="startBtn" class="btn">Iniciar Medición</button>
 
+        <!-- Tarjeta de Resultados Ampliada -->
         <div id="resultCard" class="result-card">
-            <h3 style="margin:0 0 10px 0; color:#2ed573; text-transform: uppercase; font-size: 1rem;">Medición Finalizada</h3>
-            <p id="resultText" style="margin:0; font-size:1.1rem; font-weight:bold; color:#fff;"></p>
-            <p style="margin:5px 0 0 0; font-size:0.8rem; color:#888;">(Promedio de lecturas estables)</p>
+            <h3 style="margin:0 0 10px 0; color:#2ed573; text-transform: uppercase; font-size: 0.9rem; letter-spacing: 1px;">
+                Análisis Fisiológico Completado
+            </h3>
+
+            <div style="font-size: 2.6rem; font-weight: bold; color: #ffffff; margin-bottom: 2px;" id="resultBpm">
+                -- <span style="font-size: 0.9rem; color: #888;">BPM</span>
+            </div>
+            <p style="margin: 0; font-size: 0.8rem; color: #aaa;">Ritmo Cardíaco Promedio</p>
+
+            <div class="metrics-grid">
+                <!-- Métrica 1: HRV -->
+                <div class="metric-col">
+                    <div class="metric-title">HRV (RMSSD)</div>
+                    <div class="metric-value" style="color: #00d2d3;" id="hrvValue">-- ms</div>
+                    <div class="metric-sub" id="hrvSub">--</div>
+                </div>
+
+                <!-- Métrica 2: Nivel de Estrés -->
+                <div class="metric-col">
+                    <div class="metric-title">Estrés</div>
+                    <div class="metric-value" id="stressValue">--</div>
+                    <div class="metric-sub" id="stressSub">--</div>
+                </div>
+
+                <!-- Métrica 3: Frecuencia Respiratoria -->
+                <div class="metric-col">
+                    <div class="metric-title">Respiración</div>
+                    <div class="metric-value" style="color: #54a0ff;" id="respValue">-- RPM</div>
+                    <div class="metric-sub">Reposo</div>
+                </div>
+            </div>
         </div>
 
         <video id="webcam" playsinline style="display:none;"></video>
@@ -196,7 +264,14 @@
         const heartIcon = document.getElementById('heart');
         const progressCircle = document.getElementById('progress-circle');
         const resultCard = document.getElementById('resultCard');
-        const resultText = document.getElementById('resultText');
+
+        // Elementos de métricas en tarjeta
+        const resultBpm = document.getElementById('resultBpm');
+        const hrvValue = document.getElementById('hrvValue');
+        const hrvSub = document.getElementById('hrvSub');
+        const stressValue = document.getElementById('stressValue');
+        const stressSub = document.getElementById('stressSub');
+        const respValue = document.getElementById('respValue');
 
         const CIRCUMFERENCE = 603; 
 
@@ -206,6 +281,7 @@
         let lastBeatTime = 0;
         let frameHistory = [];
         let collectedBpm = [];
+        let beatTimestamps = []; // Tiempos exactos para HRV
         const historySize = 30;
         
         const DURATION_SECONDS = 25;
@@ -304,6 +380,7 @@
                 
                 resultCard.style.display = 'none';
                 collectedBpm = [];
+                beatTimestamps = [];
                 frameHistory = [];
                 bpmDisplay.innerText = "--";
                 
@@ -348,6 +425,46 @@
             }
         }
 
+        // --- CÁLCULOS AVANZADOS (HRV, Estrés y Respiración) ---
+        function calculateAdvancedMetrics(timestamps) {
+            if (timestamps.length < 5) return null;
+
+            // 1. Obtener los intervalos IBI (Inter-Beat Interval)
+            let ibis = [];
+            for (let i = 1; i < timestamps.length; i++) {
+                ibis.push(timestamps[i] - timestamps[i - 1]);
+            }
+
+            // Filtrar intervalos fisiológicamente válidos (45-160 BPM)
+            let ibisValidos = ibis.filter(ibi => ibi >= 375 && ibi <= 1333);
+            if (ibisValidos.length < 4) return null;
+
+            // 2. Cálculo RMSSD (HRV)
+            let sumDiffSq = 0;
+            for (let i = 0; i < ibisValidos.length - 1; i++) {
+                let diff = ibisValidos[i + 1] - ibisValidos[i];
+                sumDiffSq += diff * diff;
+            }
+            let rmssd = Math.round(Math.sqrt(sumDiffSq / (ibisValidos.length - 1)));
+
+            // 3. Estimación de Respiración (RPM) basada en oscilación de IBI
+            let breathCycles = 0;
+            let goingUp = false;
+            for (let i = 1; i < ibisValidos.length; i++) {
+                if (ibisValidos[i] < ibisValidos[i - 1] && !goingUp) {
+                    goingUp = true;
+                    breathCycles++;
+                } else if (ibisValidos[i] > ibisValidos[i - 1] && goingUp) {
+                    goingUp = false;
+                }
+            }
+            let totalSeconds = ibisValidos.reduce((a, b) => a + b, 0) / 1000;
+            let rpm = Math.round((breathCycles / totalSeconds) * 60);
+            rpm = Math.min(Math.max(rpm, 10), 22); // Acotar a rango fisiológico normal de reposo
+
+            return { rmssd, rpm };
+        }
+
         function stopMeasurement() {
             if (!isProcessing) return;
             isProcessing = false;
@@ -376,7 +493,41 @@
                 statusText.innerText = "¡Medición completada!";
                 updateSignalQuality(true);
 
-                resultText.innerText = `${avgBpm} BPM`;
+                // Calcular HRV y métricas avanzadas
+                const metrics = calculateAdvancedMetrics(beatTimestamps);
+
+                resultBpm.innerHTML = `${avgBpm} <span style="font-size: 0.9rem; color: #888;">BPM</span>`;
+
+                if (metrics) {
+                    hrvValue.innerText = `${metrics.rmssd} ms`;
+                    respValue.innerText = `${metrics.rpm} RPM`;
+
+                    // Clasificación de HRV y Estrés
+                    if (metrics.rmssd > 42) {
+                        hrvSub.innerText = "Óptimo";
+                        hrvSub.style.color = "#2ed573";
+                        stressValue.innerText = "Bajo";
+                        stressValue.style.color = "#2ed573";
+                        stressSub.innerText = "Relajado";
+                    } else if (metrics.rmssd >= 25) {
+                        hrvSub.innerText = "Normal";
+                        hrvSub.style.color = "#00d2d3";
+                        stressValue.innerText = "Medio";
+                        stressValue.style.color = "#ff9f43";
+                        stressSub.innerText = "Equilibrado";
+                    } else {
+                        hrvSub.innerText = "Bajo";
+                        hrvSub.style.color = "#ff4757";
+                        stressValue.innerText = "Alto";
+                        stressValue.style.color = "#ff4757";
+                        stressSub.innerText = "Fatiga/Estrés";
+                    }
+                } else {
+                    hrvValue.innerText = "N/A";
+                    stressValue.innerText = "N/A";
+                    respValue.innerText = "N/A";
+                }
+
                 resultCard.style.display = 'block';
             } else {
                 bpmDisplay.innerText = "--";
@@ -391,7 +542,6 @@
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             const frameData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
 
-            // CANAL ROJO RESTAURADO (frameData[i])
             let totalRed = 0;
             for (let i = 0; i < frameData.length; i += 4) {
                 totalRed += frameData[i];
@@ -404,7 +554,6 @@
             const historyAvg = frameHistory.reduce((a, b) => a + b, 0) / frameHistory.length;
             const now = performance.now();
 
-            // Detección de picos sobre el canal rojo
             if (avgRed > historyAvg + 1.1 && (now - lastBeatTime) > 428) {
                 playBeep();
                 
@@ -415,6 +564,7 @@
                     if (bpm >= 45 && bpm <= 160) {
                         if (elapsedSeconds > WARMUP_SECONDS) {
                             collectedBpm.push(bpm);
+                            beatTimestamps.push(now); // Guardar marca de tiempo precisa
                         }
                         bpmDisplay.innerText = bpm;
                     }
