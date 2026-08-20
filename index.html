@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BioRitmo: Entrenador de Respiración y Cardio v3.4</title>
+  <title>BioRitmo: Entrenador de Respiración y Cardio v3.5</title>
   <style>
     :root {
       --dur-subida: 5s;
@@ -211,7 +211,6 @@
       color: #ff5252;
     }
 
-    /* Estilos del Medidor Circular (Inspirado en la Foto 2) */
     .heart-circle-container {
       display: flex;
       flex-direction: column;
@@ -423,7 +422,7 @@
 <body>
 
 <header>
-  <div class="version-tag">Versión 3.4 Audio + Óptica Mejorada</div>
+  <div class="version-tag">Versión 3.5 Audio + Óptica Mejorada</div>
   <a href="https://imaginhello.wixsite.com/imaginhellofotos" target="_blank" class="btn-top">🏠 Inicio</a>
 </header>
 
@@ -473,12 +472,12 @@
     <div class="section-title"><span>❤️ Medición de Pulso</span></div>
     
     <div class="tabs">
-      <button class="tab-btn active" id="btnTabCam" onclick="switchTab('cam')">📷 Cámara Óptica (20s)</button>
-      <button class="tab-btn" id="btnTabManual" onclick="switchTab('manual')">⌨️ Tap / Espacio</button>
+      <button class="tab-btn" id="btnTabCam" onclick="switchTab('cam')">📷 Cámara Óptica (20s)</button>
+      <button class="tab-btn active" id="btnTabManual" onclick="switchTab('manual')">⌨️ Tap / Espacio</button>
     </div>
 
     <!-- Pestaña Cámara Óptica (20 seg) -->
-    <div id="tabCam" class="tab-content active">
+    <div id="tabCam" class="tab-content">
       <button class="btn-cam" id="btnStartCam" onclick="iniciarCamaraOptica()">📹 Activar Cámara / Flash (20 seg)</button>
       <video id="webcam" autoplay playsinline width="100" height="100"></video>
       <canvas id="canvasOptico" width="100" height="100" style="display:none;"></canvas>
@@ -487,8 +486,8 @@
       </div>
     </div>
 
-    <!-- Pestaña Manual Tap con Medidor Circular -->
-    <div id="tabManual" class="tab-content">
+    <!-- Pestaña Manual Tap con Medidor Circular (Activa por defecto) -->
+    <div id="tabManual" class="tab-content active">
       <div class="heart-circle-container">
         <div class="heart-circle" id="tapCircle" onclick="registrarLatidoManual()">
           <div class="heart-icon">❤️</div>
@@ -608,6 +607,7 @@
   let roisHist = [];
   let timerCamara = null;
   let tiempoRestanteCam = 20;
+  let ultimoLatidoOpticoTime = 0;
 
   window.addEventListener('DOMContentLoaded', () => {
     const esMovil = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 600;
@@ -686,6 +686,7 @@
 
     roisHist = [];
     tiempoRestanteCam = 20;
+    ultimoLatidoOpticoTime = 0;
 
     try {
       const constraints = {
@@ -743,8 +744,23 @@
         sumaRojo += data[i]; 
       }
       const promedioRojo = sumaRojo / (data.length / 4);
+      const ahora = Date.now();
 
-      roisHist.push({ t: Date.now(), val: promedioRojo });
+      roisHist.push({ t: ahora, val: promedioRojo });
+
+      // Reproducción de sonido en tiempo real al detectar pico óptico
+      if (roisHist.length > 5) {
+        let n = roisHist.length;
+        let vActual = roisHist[n - 1].val;
+        let vPrev1 = roisHist[n - 2].val;
+        let vPrev2 = roisHist[n - 3].val;
+
+        // Detección de cresta y ventana mínima entre latidos (350ms)
+        if (vPrev1 > vPrev2 && vPrev1 > vActual && (ahora - ultimoLatidoOpticoTime > 350)) {
+          reproducirTono(600, 0.05); // Pitido de pulso detectado
+          ultimoLatidoOpticoTime = ahora;
+        }
+      }
     }
 
     animFrameCam = requestAnimationFrame(procesarFotogramasCamara);
@@ -766,11 +782,9 @@
     }
   }
 
-  // Algoritmo de detección de picos mediante filtrado por suavizado
   function calcularBpmDesdeSenal(historial) {
     if (historial.length < 50) return 70;
 
-    // 1. Obtener valores y aplicar un filtro de media móvil para reducir ruido térmico
     let rawVals = historial.map(h => h.val);
     let smoothed = [];
     let windowSize = 3;
@@ -783,12 +797,10 @@
       smoothed.push(sum / count);
     }
 
-    // 2. Detectar picos verdaderos asegurando un intervalo fisiológico razonable (min 350ms entre latidos)
     let picosIndex = [];
     let minIntervalMs = 350;
     let lastPeakTime = 0;
 
-    // Calcular media de la señal suavizada
     let mean = smoothed.reduce((a, b) => a + b, 0) / smoothed.length;
 
     for (let i = 1; i < smoothed.length - 1; i++) {
@@ -803,7 +815,6 @@
 
     if (picosIndex.length < 2) return 72;
 
-    // 3. Calcular BPM promediando los intervalos entre picos
     let intervalos = [];
     for (let k = 1; k < picosIndex.length; k++) {
       let diffMs = historial[picosIndex[k]].t - historial[picosIndex[k - 1]].t;
@@ -836,7 +847,6 @@
     getAudioContext();
     const ahora = Date.now();
     
-    // Animación visual del círculo
     const circle = document.getElementById('tapCircle');
     circle.classList.add('pulse-act');
     setTimeout(() => circle.classList.remove('pulse-act'), 150);
