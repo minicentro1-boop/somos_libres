@@ -1,1 +1,579 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor de Ritmo Cardíaco PRO</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        h1 {
+            font-size: 1.4rem;
+            margin: 0 0 15px 0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #ff4757;
+        }
+        #container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 360px;
+            background-color: #1e1e1e;
+            padding: 25px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        canvas {
+            display: none;
+        }
+        .btn {
+            background-color: #ff4757;
+            color: white;
+            border: none;
+            padding: 18px 40px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            border-radius: 35px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(255, 71, 87, 0.4);
+            transition: all 0.3s ease;
+            margin-top: 20px;
+            width: 100%;
+        }
+        .btn:disabled {
+            background-color: #444;
+            box-shadow: none;
+            cursor: not-allowed;
+            color: #aaa;
+        }
+        .btn:active:not(:disabled) {
+            transform: scale(0.98);
+        }
 
+        /* --- Estilos del Anillo de Progreso Circular --- */
+        #measurement-zone {
+            position: relative;
+            width: 200px;
+            height: 200px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin: 15px 0;
+        }
+
+        .progress-ring-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 8px solid #333;
+            box-sizing: border-box;
+        }
+
+        .progress-ring-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform: rotate(-90deg);
+        }
+
+        .progress-ring-circle {
+            width: 100%;
+            height: 100%;
+            fill: none;
+            stroke: #ff4757;
+            stroke-width: 8;
+            stroke-linecap: round;
+            stroke-dasharray: 603; 
+            stroke-dashoffset: 603;
+            transition: stroke-dashoffset 0.5s linear, stroke 0.3s ease;
+        }
+
+        #bpm-display {
+            font-size: 3.8rem;
+            font-weight: bold;
+            color: #ffffff;
+            margin: 0;
+            line-height: 1;
+            z-index: 10;
+        }
+        #bpm-unit {
+            font-size: 1.2rem;
+            color: #aaa;
+            z-index: 10;
+        }
+
+        .heart-icon {
+            font-size: 2.2rem;
+            opacity: 0.3;
+            transition: transform 0.1s, opacity 0.1s;
+            position: absolute;
+            top: 25px;
+            z-index: 10;
+        }
+        .heart-active {
+            opacity: 1;
+            transform: scale(1.3) translateY(-5px);
+        }
+
+        #status {
+            font-size: 0.95rem;
+            color: #aaa;
+            text-align: center;
+            margin: 15px 0;
+            min-height: 45px;
+            line-height: 1.4;
+        }
+
+        /* --- Tarjeta de Resultados Avanzada --- */
+        .result-card {
+            background-color: #1a1a1a;
+            padding: 20px;
+            border-radius: 15px;
+            border: 1px solid #333;
+            text-align: center;
+            width: 100%;
+            display: none;
+            margin-top: 10px;
+            box-sizing: border-box;
+        }
+
+        .metrics-grid {
+            display: flex;
+            justify-content: space-between;
+            background: #121212;
+            padding: 12px 5px;
+            border-radius: 12px;
+            border: 1px solid #2a2a2a;
+            margin-top: 15px;
+        }
+
+        .metric-col {
+            flex: 1;
+            text-align: center;
+            padding: 0 4px;
+        }
+
+        .metric-col:not(:last-child) {
+            border-right: 1px solid #2a2a2a;
+        }
+
+        .metric-title {
+            font-size: 0.7rem;
+            color: #888;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .metric-value {
+            font-size: 1rem;
+            font-weight: bold;
+        }
+
+        .metric-sub {
+            font-size: 0.68rem;
+            color: #aaa;
+            margin-top: 2px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="container">
+        <h1>Ritmo Cardíaco</h1>
+        
+        <!-- Zona de medición -->
+        <div id="measurement-zone">
+            <div class="progress-ring-bg"></div>
+            <svg class="progress-ring-svg" viewBox="0 0 200 200">
+                <circle id="progress-circle" class="progress-ring-circle" cx="100" cy="100" r="96" />
+            </svg>
+            <div id="heart" class="heart-icon">❤️</div>
+            <div id="bpm-display">--</div>
+            <div id="bpm-unit">BPM</div>
+        </div>
+
+        <p id="status">Presione Iniciar y cubra la cámara y el flash con su dedo suavemente.</p>
+
+        <button id="startBtn" class="btn">Iniciar Medición</button>
+
+        <!-- Tarjeta de Resultados Ampliada -->
+        <div id="resultCard" class="result-card">
+            <h3 style="margin:0 0 10px 0; color:#2ed573; text-transform: uppercase; font-size: 0.9rem; letter-spacing: 1px;">
+                Análisis Fisiológico Completado
+            </h3>
+
+            <div style="font-size: 2.6rem; font-weight: bold; color: #ffffff; margin-bottom: 2px;" id="resultBpm">
+                -- <span style="font-size: 0.9rem; color: #888;">BPM</span>
+            </div>
+            <p style="margin: 0; font-size: 0.8rem; color: #aaa;">Ritmo Cardíaco Promedio</p>
+
+            <div class="metrics-grid">
+                <!-- Métrica 1: HRV -->
+                <div class="metric-col">
+                    <div class="metric-title">HRV (RMSSD)</div>
+                    <div class="metric-value" style="color: #00d2d3;" id="hrvValue">-- ms</div>
+                    <div class="metric-sub" id="hrvSub">--</div>
+                </div>
+
+                <!-- Métrica 2: Nivel de Estrés -->
+                <div class="metric-col">
+                    <div class="metric-title">Estrés</div>
+                    <div class="metric-value" id="stressValue">--</div>
+                    <div class="metric-sub" id="stressSub">--</div>
+                </div>
+
+                <!-- Métrica 3: Frecuencia Respiratoria -->
+                <div class="metric-col">
+                    <div class="metric-title">Respiración</div>
+                    <div class="metric-value" style="color: #54a0ff;" id="respValue">-- RPM</div>
+                    <div class="metric-sub">Reposo</div>
+                </div>
+            </div>
+        </div>
+
+        <video id="webcam" playsinline style="display:none;"></video>
+        <canvas id="canvas" width="50" height="50"></canvas>
+    </div>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const startBtn = document.getElementById('startBtn');
+        const bpmDisplay = document.getElementById('bpm-display');
+        const statusText = document.getElementById('status');
+        const heartIcon = document.getElementById('heart');
+        const progressCircle = document.getElementById('progress-circle');
+        const resultCard = document.getElementById('resultCard');
+
+        // Elementos de métricas en tarjeta
+        const resultBpm = document.getElementById('resultBpm');
+        const hrvValue = document.getElementById('hrvValue');
+        const hrvSub = document.getElementById('hrvSub');
+        const stressValue = document.getElementById('stressValue');
+        const stressSub = document.getElementById('stressSub');
+        const respValue = document.getElementById('respValue');
+
+        const CIRCUMFERENCE = 603; 
+
+        let audioCtx = null;
+        let mediaStream = null;
+        let isProcessing = false;
+        let lastBeatTime = 0;
+        let frameHistory = [];
+        let collectedBpm = [];
+        let beatTimestamps = []; // Tiempos exactos para HRV
+        const historySize = 30;
+        
+        const DURATION_SECONDS = 25;
+        const WARMUP_SECONDS = 4;
+        let measurementStartTime = 0;
+        let animationFrameId = null;
+
+        function playBeep() {
+            if (!audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.08);
+
+                gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.08);
+
+                heartIcon.classList.add('heart-active');
+                setTimeout(() => heartIcon.classList.remove('heart-active'), 100);
+            } catch(e) {}
+        }
+
+        function playFinishAlarm() {
+            if (!audioCtx) return;
+            try {
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(523.25, now);
+                osc.frequency.setValueAtTime(659.25, now + 0.15);
+                osc.frequency.setValueAtTime(783.99, now + 0.30);
+                osc.frequency.setValueAtTime(1046.50, now + 0.45);
+
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.8);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start(now);
+                osc.stop(now + 0.8);
+            } catch(e) {}
+        }
+
+        function setProgress(percent) {
+            const offset = CIRCUMFERENCE - (percent / 100 * CIRCUMFERENCE);
+            progressCircle.style.strokeDashoffset = offset;
+        }
+
+        function updateSignalQuality(isGood) {
+            progressCircle.style.stroke = isGood ? '#2ed573' : '#ff4757';
+        }
+
+        function measurementLoop(timestamp) {
+            if (!isProcessing) return;
+
+            if (!measurementStartTime) measurementStartTime = timestamp;
+            const elapsed = (timestamp - measurementStartTime) / 1000;
+            const remaining = Math.max(0, DURATION_SECONDS - elapsed);
+
+            const percent = (elapsed / DURATION_SECONDS) * 100;
+            setProgress(percent);
+
+            if (elapsed < WARMUP_SECONDS) {
+                statusText.innerText = `Acomode el dedo suavemente sobre la cámara... (${Math.ceil(WARMUP_SECONDS - elapsed)}s)`;
+            } else {
+                statusText.innerText = `Midiendo... Mantenga el dedo firme (${Math.ceil(remaining)}s restantes)`;
+            }
+
+            const recentBpmCount = collectedBpm.filter(b => b > 0).length;
+            updateSignalQuality(recentBpmCount > 2);
+
+            if (elapsed >= DURATION_SECONDS) {
+                stopMeasurement();
+            } else {
+                processFrame(elapsed); 
+                animationFrameId = requestAnimationFrame(measurementLoop);
+            }
+        }
+
+        async function startCamera() {
+            try {
+                if (animationFrameId) cancelAnimationFrame(animationFrameId);
+                isProcessing = false;
+                measurementStartTime = 0;
+                
+                resultCard.style.display = 'none';
+                collectedBpm = [];
+                beatTimestamps = [];
+                frameHistory = [];
+                bpmDisplay.innerText = "--";
+                
+                setProgress(0);
+                updateSignalQuality(false);
+
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                } else if (audioCtx.state === 'suspended') {
+                    await audioCtx.resume();
+                }
+
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: { exact: 'environment' },
+                        width: { ideal: 300 },
+                        height: { ideal: 300 },
+                        advanced: [{ torch: true }]
+                    }
+                });
+
+                video.srcObject = mediaStream;
+                await video.play();
+
+                const track = mediaStream.getVideoTracks()[0];
+                if (track.getCapabilities && track.getCapabilities().torch) {
+                    await track.applyConstraints({ advanced: [{ torch: true }] });
+                }
+
+                isProcessing = true;
+                startBtn.disabled = true;
+                startBtn.innerText = "Midiendo...";
+
+                animationFrameId = requestAnimationFrame(measurementLoop);
+
+            } catch (err) {
+                console.error(err);
+                alert("Error al iniciar: " + err.message);
+                statusText.innerText = "Error de acceso a cámara. Asegúrate de otorgar permisos y usar HTTPS.";
+                isProcessing = false;
+                startBtn.disabled = false;
+            }
+        }
+
+        // --- CÁLCULOS AVANZADOS (HRV, Estrés y Respiración) ---
+        function calculateAdvancedMetrics(timestamps) {
+            if (timestamps.length < 5) return null;
+
+            // 1. Obtener los intervalos IBI (Inter-Beat Interval)
+            let ibis = [];
+            for (let i = 1; i < timestamps.length; i++) {
+                ibis.push(timestamps[i] - timestamps[i - 1]);
+            }
+
+            // Filtrar intervalos fisiológicamente válidos (45-160 BPM)
+            let ibisValidos = ibis.filter(ibi => ibi >= 375 && ibi <= 1333);
+            if (ibisValidos.length < 4) return null;
+
+            // 2. Cálculo RMSSD (HRV)
+            let sumDiffSq = 0;
+            for (let i = 0; i < ibisValidos.length - 1; i++) {
+                let diff = ibisValidos[i + 1] - ibisValidos[i];
+                sumDiffSq += diff * diff;
+            }
+            let rmssd = Math.round(Math.sqrt(sumDiffSq / (ibisValidos.length - 1)));
+
+            // 3. Estimación de Respiración (RPM) basada en oscilación de IBI
+            let breathCycles = 0;
+            let goingUp = false;
+            for (let i = 1; i < ibisValidos.length; i++) {
+                if (ibisValidos[i] < ibisValidos[i - 1] && !goingUp) {
+                    goingUp = true;
+                    breathCycles++;
+                } else if (ibisValidos[i] > ibisValidos[i - 1] && goingUp) {
+                    goingUp = false;
+                }
+            }
+            let totalSeconds = ibisValidos.reduce((a, b) => a + b, 0) / 1000;
+            let rpm = Math.round((breathCycles / totalSeconds) * 60);
+            rpm = Math.min(Math.max(rpm, 10), 22); // Acotar a rango fisiológico normal de reposo
+
+            return { rmssd, rpm };
+        }
+
+        function stopMeasurement() {
+            if (!isProcessing) return;
+            isProcessing = false;
+            
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            animationFrameId = null;
+
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => {
+                    track.stop();
+                });
+                mediaStream = null;
+            }
+
+            startBtn.disabled = false;
+            startBtn.innerText = "Medir de Nuevo";
+
+            playFinishAlarm();
+            setProgress(100);
+
+            if (collectedBpm.length > 3) {
+                const sum = collectedBpm.reduce((a, b) => a + b, 0);
+                const avgBpm = Math.round(sum / collectedBpm.length);
+                
+                bpmDisplay.innerText = avgBpm;
+                statusText.innerText = "¡Medición completada!";
+                updateSignalQuality(true);
+
+                // Calcular HRV y métricas avanzadas
+                const metrics = calculateAdvancedMetrics(beatTimestamps);
+
+                resultBpm.innerHTML = `${avgBpm} <span style="font-size: 0.9rem; color: #888;">BPM</span>`;
+
+                if (metrics) {
+                    hrvValue.innerText = `${metrics.rmssd} ms`;
+                    respValue.innerText = `${metrics.rpm} RPM`;
+
+                    // Clasificación de HRV y Estrés
+                    if (metrics.rmssd > 42) {
+                        hrvSub.innerText = "Óptimo";
+                        hrvSub.style.color = "#2ed573";
+                        stressValue.innerText = "Bajo";
+                        stressValue.style.color = "#2ed573";
+                        stressSub.innerText = "Relajado";
+                    } else if (metrics.rmssd >= 25) {
+                        hrvSub.innerText = "Normal";
+                        hrvSub.style.color = "#00d2d3";
+                        stressValue.innerText = "Medio";
+                        stressValue.style.color = "#ff9f43";
+                        stressSub.innerText = "Equilibrado";
+                    } else {
+                        hrvSub.innerText = "Bajo";
+                        hrvSub.style.color = "#ff4757";
+                        stressValue.innerText = "Alto";
+                        stressValue.style.color = "#ff4757";
+                        stressSub.innerText = "Fatiga/Estrés";
+                    }
+                } else {
+                    hrvValue.innerText = "N/A";
+                    stressValue.innerText = "N/A";
+                    respValue.innerText = "N/A";
+                }
+
+                resultCard.style.display = 'block';
+            } else {
+                bpmDisplay.innerText = "--";
+                statusText.innerText = "No se obtuvo una lectura clara. Intente nuevamente apoyando suavemente la yema sobre el lente y el flash.";
+                updateSignalQuality(false);
+            }
+        }
+
+        function processFrame(elapsedSeconds) {
+            if (!isProcessing) return;
+
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const frameData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+
+            let totalRed = 0;
+            for (let i = 0; i < frameData.length; i += 4) {
+                totalRed += frameData[i];
+            }
+            const avgRed = totalRed / (frameData.length / 4);
+
+            frameHistory.push(avgRed);
+            if (frameHistory.length > historySize) frameHistory.shift();
+
+            const historyAvg = frameHistory.reduce((a, b) => a + b, 0) / frameHistory.length;
+            const now = performance.now();
+
+            if (avgRed > historyAvg + 1.1 && (now - lastBeatTime) > 428) {
+                playBeep();
+                
+                if (lastBeatTime > 0) {
+                    const timeDiff = (now - lastBeatTime) / 1000;
+                    const bpm = Math.round(60 / timeDiff);
+                    
+                    if (bpm >= 45 && bpm <= 160) {
+                        if (elapsedSeconds > WARMUP_SECONDS) {
+                            collectedBpm.push(bpm);
+                            beatTimestamps.push(now); // Guardar marca de tiempo precisa
+                        }
+                        bpmDisplay.innerText = bpm;
+                    }
+                }
+                lastBeatTime = now;
+            }
+        }
+
+        startBtn.addEventListener('click', startCamera);
+    </script>
+</body>
+</html>
